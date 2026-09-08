@@ -203,7 +203,7 @@
             <label><span>Maximum answer tokens</span><input id="token-limit" type="number" min="64" max="8192" step="64"></label>
           </div>
           <label><span>Temperature</span><input id="temperature" type="number" min="0" max="2" step="0.1"></label>
-          <label><span>Page snapshot cleanup</span><select id="snapshot-cleanup"><option value="none">Leave all tags</option><option value="basic">Remove scripts and media shells</option><option value="full">Remove noisy page chrome and form tags</option></select></label>
+          <label><span>Page snapshot cleanup</span><select id="snapshot-cleanup"><option value="none">Leave all tags</option><option value="basic">Remove scripts and media shells</option><option value="full">Remove noisy page chrome and form tags</option><option value="text">Text Only (dangerous)</option></select></label>
           <label><span>System message</span><textarea id="system"></textarea></label>
           <button class="secondary" id="save">Save settings & start new chat</button>
         </div>
@@ -340,6 +340,8 @@
   }
 
   function capturePageContext(limit, snapshotCleanup) {
+    if (snapshotCleanup === "text") return captureTextOnlyContext(limit);
+
     const clone = document.documentElement.cloneNode(true);
     clone.querySelector(`#${CSS.escape(ROOT_ID)}`)?.remove();
     const removedTags = tagsForSnapshotCleanup(snapshotCleanup);
@@ -452,7 +454,9 @@
         DEFAULTS.maxTokens,
       ),
       temperature: clamp(Number(raw.temperature), 0, 2, DEFAULTS.temperature),
-      snapshotCleanup: ["none", "basic", "full"].includes(raw.snapshotCleanup)
+      snapshotCleanup: ["none", "basic", "full", "text"].includes(
+        raw.snapshotCleanup,
+      )
         ? raw.snapshotCleanup
         : DEFAULTS.snapshotCleanup,
       theme: ["system", "light", "dark"].includes(raw.theme)
@@ -529,6 +533,29 @@
     if (level === "none") return [];
     if (level === "basic") return BASIC_REMOVED_TAGS;
     return DEFAULT_REMOVED_TAGS;
+  }
+
+  function captureTextOnlyContext(limit) {
+    const text = extractDocumentText();
+    const truncated = text.length > limit;
+    const snapshot = truncated ? text.slice(0, limit) : text;
+    return [
+      "<page_context>",
+      `URL: ${location.href}`,
+      `Title: ${document.title}`,
+      `Captured: ${new Date().toISOString()}`,
+      "Snapshot format: text only; markup, element roles, attributes, and hierarchy were not included.",
+      `Text truncated: ${truncated ? `yes, at ${limit} characters` : "no"}`,
+      "Text:",
+      snapshot,
+      "</page_context>",
+    ].join("\n");
+  }
+
+  function extractDocumentText() {
+    const source =
+      document.body?.innerText || document.documentElement.textContent || "";
+    return source.replace(/\s+/g, " ").trim();
   }
 
   function reflectFormState(clone) {

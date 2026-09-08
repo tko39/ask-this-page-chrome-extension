@@ -50,6 +50,7 @@ The **Page snapshot cleanup** setting controls how much markup is removed:
 - **Leave all tags** keeps the page markup, apart from the extension UI and security redactions.
 - **Remove scripts and media shells** removes `SCRIPT`, `STYLE`, `NOSCRIPT`, `TEMPLATE`, `IFRAME`, `CANVAS`, and `SVG` tags.
 - **Remove noisy page chrome and form tags** is the default. It removes `SCRIPT`, `STYLE`, `NOSCRIPT`, `TEMPLATE`, `SVG`, `META`, `NAV`, `FOOTER`, `ASIDE`, `IFRAME`, `FORM`, `BUTTON`, `INPUT`, `TEXTAREA`, `SELECT`, `OPTION`, `CANVAS`, `VIDEO`, `AUDIO`, `MAP`, `OBJECT`, `EMBED`, `SOURCE`, and `TRACK` tags.
+- **Text Only (dangerous)** sends normalized document text without markup, element roles, attributes, or hierarchy. This produces the most lightweight prompt, but it can lose important context.
 
 Follow-ups include prior chat turns so the model retains context. The request sets llama.cpp's `cache_prompt: true`. `llama-server` compares the new prompt with the preceding prompt and can reuse the common-prefix KV cache rather than evaluating the unchanged DOM again. When supplied by the server, the UI shows the reused token count.
 
