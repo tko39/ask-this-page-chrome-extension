@@ -3,7 +3,7 @@
 A complete Chrome Manifest V3 extension that adds:
 
 - a floating **?** button to normal HTTP/HTTPS pages;
-- a Chrome toolbar action that opens the same panel;
+- a Chrome toolbar action that hides or shows the embedded page UI, including the floating **?** button;
 - a chat UI that asks a local-network `llama-server.exe` about the page's **current live DOM**;
 - streamed assistant responses with a loading spinner while the model is working;
 - basic Markdown rendering for completed assistant responses;
@@ -23,7 +23,7 @@ It can be changed from the panel's **Settings** screen without modifying the man
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked** and select the `page-llama` folder.
-5. Open or reload a normal web page, then click the floating **?** or the extension's toolbar icon.
+5. Open or reload a normal web page, then click the floating **?** to open the panel. Click the extension's toolbar icon to hide or show the embedded UI, including the floating **?** button, on that page.
 
 Chrome does not allow extensions to inject this panel into Chrome-owned pages such as `chrome://extensions` or the Chrome Web Store.
 

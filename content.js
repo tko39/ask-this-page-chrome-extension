@@ -239,6 +239,7 @@
   });
 
   chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === "toggle-extension-ui") toggleExtensionUi();
     if (message?.type === "toggle-panel") togglePanel();
   });
 
@@ -259,6 +260,13 @@
   function togglePanel() {
     panel.classList.toggle("open");
     if (panel.classList.contains("open")) setTimeout(() => question.focus(), 0);
+  }
+
+  function toggleExtensionUi() {
+    const hidden = host.style.display !== "none";
+    host.style.display = hidden ? "none" : "";
+    host.hidden = hidden;
+    if (hidden) panel.classList.remove("open");
   }
 
   function resetConversation() {

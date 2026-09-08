@@ -4,7 +4,7 @@ const STREAM_HEARTBEAT_MS = 15000;
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: "toggle-panel" });
+    await chrome.tabs.sendMessage(tab.id, { type: "toggle-extension-ui" });
   } catch {
     // Chrome's own pages and the Web Store do not allow content scripts.
   }
