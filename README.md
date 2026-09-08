@@ -6,6 +6,7 @@ A complete Chrome Manifest V3 extension that adds:
 - a Chrome toolbar action that opens the same panel;
 - a chat UI that asks a local-network `llama-server.exe` about the page's **current live DOM**;
 - streamed assistant responses with a loading spinner while the model is working;
+- basic Markdown rendering for completed assistant responses;
 - multi-turn conversation and llama.cpp prompt-cache reuse;
 - automatic loaded-model discovery from `/v1/models`;
 - configurable endpoint, optional API key, system prompt, DOM limit, output length, temperature, optional model override, page cleanup, and theme.
@@ -54,6 +55,8 @@ Follow-ups include prior chat turns so the model retains context. The request se
 
 Answers are requested with OpenAI-compatible streaming enabled, so the assistant bubble fills as chunks arrive instead of waiting for the full response body. The existing one-shot extension message path remains as a fallback for compatibility, but the panel uses streaming.
 
+Assistant output streams as plain text while the model is generating, then renders a safe Markdown subset after the answer completes. Supported Markdown includes headings, paragraphs, ordered and unordered lists, blockquotes, fenced code blocks, inline code, bold, italic, and `http:`, `https:`, or `mailto:` links. Raw HTML from model output is shown as text rather than rendered as page HTML, and unsafe link protocols are not made clickable.
+
 While waiting for a slow model load or first response bytes, the extension keeps the streaming port active with periodic status updates. There is no extension-level request timeout; closing or navigating the tab cancels the in-flight request.
 
 Important limitation: the OpenAI-compatible chat endpoint is stateless at the HTTP layer, so the unchanged message prefix is transmitted again even when its token computation is cached. Omitting the DOM from later requests would make a standard `llama-server` request forget it. Click **New** to capture a fresh DOM after the page changes; SPA URL changes reset the conversation automatically.
@@ -72,7 +75,7 @@ The panel uses the browser or operating-system color scheme by default. In **Set
 
 - `manifest.json` — Manifest V3 configuration and HTTP/HTTPS host permissions, allowing endpoints to be changed without editing the extension.
 - `service-worker.js` — calls llama.cpp, streams chat chunks, discovers the loaded model, and reports errors/cache metrics.
-- `content.js` — floating button, Shadow DOM chat UI, live-DOM capture, cleanup settings, theme, and conversation state.
+- `content.js` — floating button, Shadow DOM chat UI, Markdown rendering, live-DOM capture, cleanup settings, theme, and conversation state.
 
 ## Troubleshooting
 

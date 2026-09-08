@@ -145,6 +145,21 @@
       .msg { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .user { margin-left: 34px; background: var(--user-bg); }
       .assistant { margin-right: 20px; background: var(--assistant-bg); }
+      .assistant.rendered { white-space: normal; }
+      .assistant.rendered > :first-child { margin-top: 0; }
+      .assistant.rendered > :last-child { margin-bottom: 0; }
+      .assistant.rendered p { margin: 0 0 9px; }
+      .assistant.rendered h1, .assistant.rendered h2, .assistant.rendered h3, .assistant.rendered h4, .assistant.rendered h5, .assistant.rendered h6 { margin: 12px 0 7px; line-height: 1.25; }
+      .assistant.rendered h1 { font-size: 18px; }
+      .assistant.rendered h2 { font-size: 16px; }
+      .assistant.rendered h3, .assistant.rendered h4, .assistant.rendered h5, .assistant.rendered h6 { font-size: 14px; }
+      .assistant.rendered ul, .assistant.rendered ol { margin: 0 0 9px; padding-left: 20px; }
+      .assistant.rendered li { margin: 3px 0; }
+      .assistant.rendered blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid var(--border); color: var(--muted); }
+      .assistant.rendered pre { margin: 0 0 9px; padding: 9px 10px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
+      .assistant.rendered code { padding: 1px 4px; border-radius: 5px; background: var(--input-bg); font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .assistant.rendered pre code { padding: 0; background: transparent; white-space: pre; }
+      .assistant.rendered a { color: var(--button-bg); text-decoration: underline; text-underline-offset: 2px; }
       .error { background: var(--error-bg); color: var(--error-text); }
       .meta { margin: -7px 4px 12px; color: var(--subtle); font-size: 11px; }
       #settings { display: none; padding: 12px 14px; overflow-y: auto; border-bottom: 1px solid var(--border-soft); background: var(--panel-alt); }
@@ -293,7 +308,7 @@
       });
 
       messages.push({ role: "assistant", content: result.answer });
-      updateMessage(assistantMessage, result.answer);
+      renderAssistantMessage(assistantMessage, result.answer);
 
       const cache = Number.isFinite(result.cachedTokens)
         ? `${result.cachedTokens.toLocaleString()} cached prompt tokens`
@@ -356,7 +371,19 @@
   }
 
   function updateMessage(element, text) {
+    element.classList.remove("rendered");
     element.textContent = text;
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderAssistantMessage(element, text) {
+    try {
+      element.replaceChildren(renderMarkdown(text));
+      element.classList.add("rendered");
+    } catch {
+      element.classList.remove("rendered");
+      element.textContent = text;
+    }
     body.scrollTop = body.scrollHeight;
   }
 
@@ -521,6 +548,232 @@
     root.querySelectorAll("input").forEach((node) => {
       if (node.type === "password") node.setAttribute("value", "[REDACTED]");
     });
+  }
+
+  function renderMarkdown(markdown) {
+    const fragment = document.createDocumentFragment();
+    const lines = String(markdown || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n");
+    let index = 0;
+
+    while (index < lines.length) {
+      const line = lines[index];
+      if (!line.trim()) {
+        index += 1;
+        continue;
+      }
+
+      const fence = line.match(/^```\s*([^`]*)$/);
+      if (fence) {
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !/^```\s*$/.test(lines[index])) {
+          codeLines.push(lines[index]);
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        const language = fence[1].trim().split(/\s+/)[0];
+        if (language) code.dataset.language = language;
+        code.textContent = codeLines.join("\n");
+        pre.appendChild(code);
+        fragment.appendChild(pre);
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,6})\s+(.+)$/);
+      if (heading) {
+        const element = document.createElement(`h${heading[1].length}`);
+        appendInline(element, heading[2].trim());
+        fragment.appendChild(element);
+        index += 1;
+        continue;
+      }
+
+      if (/^>\s?/.test(line)) {
+        const quoteLines = [];
+        while (index < lines.length && /^>\s?/.test(lines[index])) {
+          quoteLines.push(lines[index].replace(/^>\s?/, ""));
+          index += 1;
+        }
+        const blockquote = document.createElement("blockquote");
+        const paragraph = document.createElement("p");
+        appendInline(paragraph, quoteLines.join(" ").trim());
+        blockquote.appendChild(paragraph);
+        fragment.appendChild(blockquote);
+        continue;
+      }
+
+      const listMatch = line.match(/^(\s*)([-*+] |\d+[.)] )(.+)$/);
+      if (listMatch) {
+        const ordered = /^\d/.test(listMatch[2]);
+        const list = document.createElement(ordered ? "ol" : "ul");
+        while (index < lines.length) {
+          const itemMatch = lines[index].match(/^(\s*)([-*+] |\d+[.)] )(.+)$/);
+          if (!itemMatch || /^\d/.test(itemMatch[2]) !== ordered) break;
+          const item = document.createElement("li");
+          appendInline(item, itemMatch[3].trim());
+          list.appendChild(item);
+          index += 1;
+        }
+        fragment.appendChild(list);
+        continue;
+      }
+
+      const paragraphLines = [];
+      while (
+        index < lines.length &&
+        lines[index].trim() &&
+        !/^```\s*([^`]*)$/.test(lines[index]) &&
+        !/^(#{1,6})\s+(.+)$/.test(lines[index]) &&
+        !/^>\s?/.test(lines[index]) &&
+        !/^(\s*)([-*+] |\d+[.)] )(.+)$/.test(lines[index])
+      ) {
+        paragraphLines.push(lines[index].trim());
+        index += 1;
+      }
+      const paragraph = document.createElement("p");
+      appendInline(paragraph, paragraphLines.join(" "));
+      fragment.appendChild(paragraph);
+    }
+
+    return fragment;
+  }
+
+  function appendInline(parent, text) {
+    let remaining = text;
+    while (remaining) {
+      const token = nextInlineToken(remaining);
+      if (!token) {
+        parent.appendChild(document.createTextNode(remaining));
+        return;
+      }
+
+      if (token.start > 0) {
+        parent.appendChild(
+          document.createTextNode(remaining.slice(0, token.start)),
+        );
+      }
+
+      if (token.type === "code") {
+        const code = document.createElement("code");
+        code.textContent = token.content;
+        parent.appendChild(code);
+      } else if (token.type === "link") {
+        appendLinkOrText(parent, token.label, token.href);
+      } else {
+        const element = document.createElement(token.type);
+        appendInline(element, token.content);
+        parent.appendChild(element);
+      }
+
+      remaining = remaining.slice(token.end);
+    }
+  }
+
+  function nextInlineToken(text) {
+    const candidates = [
+      findCodeToken(text),
+      findLinkToken(text),
+      findDelimitedToken(text, "**", "strong"),
+      findDelimitedToken(text, "__", "strong"),
+      findDelimitedToken(text, "*", "em"),
+      findDelimitedToken(text, "_", "em"),
+    ].filter(Boolean);
+    candidates.sort(
+      (left, right) => left.start - right.start || left.end - right.end,
+    );
+    return candidates[0] || null;
+  }
+
+  function findCodeToken(text) {
+    const start = text.indexOf("`");
+    if (start < 0) return null;
+    const end = text.indexOf("`", start + 1);
+    if (end < 0) return null;
+    return {
+      type: "code",
+      start,
+      end: end + 1,
+      content: text.slice(start + 1, end),
+    };
+  }
+
+  function findLinkToken(text) {
+    const match = /\[([^\]\n]+)\]\(([^\s)]+)\)/.exec(text);
+    if (!match) return null;
+    return {
+      type: "link",
+      start: match.index,
+      end: match.index + match[0].length,
+      label: match[1],
+      href: match[2],
+    };
+  }
+
+  function findDelimitedToken(text, delimiter, type) {
+    let start = text.indexOf(delimiter);
+    while (start >= 0) {
+      if (
+        delimiter.length === 1 &&
+        isRepeatedDelimiter(text, start, delimiter)
+      ) {
+        start = text.indexOf(delimiter, start + delimiter.length);
+        continue;
+      }
+
+      let end = text.indexOf(delimiter, start + delimiter.length);
+      while (
+        end >= 0 &&
+        delimiter.length === 1 &&
+        isRepeatedDelimiter(text, end, delimiter)
+      ) {
+        end = text.indexOf(delimiter, end + delimiter.length);
+      }
+
+      if (end >= 0) {
+        return {
+          type,
+          start,
+          end: end + delimiter.length,
+          content: text.slice(start + delimiter.length, end),
+        };
+      }
+
+      start = text.indexOf(delimiter, start + delimiter.length);
+    }
+    return null;
+  }
+
+  function isRepeatedDelimiter(text, index, delimiter) {
+    return text[index - 1] === delimiter || text[index + 1] === delimiter;
+  }
+
+  function appendLinkOrText(parent, label, href) {
+    const url = safeLinkUrl(href);
+    if (!url) {
+      parent.appendChild(document.createTextNode(label));
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    appendInline(link, label);
+    parent.appendChild(link);
+  }
+
+  function safeLinkUrl(href) {
+    try {
+      const url = new URL(href);
+      return ["http:", "https:", "mailto:"].includes(url.protocol)
+        ? url.toString()
+        : "";
+    } catch {
+      return "";
+    }
   }
 
   function clamp(value, min, max, fallback) {
