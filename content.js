@@ -22,13 +22,53 @@
     maxTokens: 1024,
     temperature: 0.2,
     model: "",
+    snapshotCleanup: "full",
+    theme: "system",
   };
+
+  const BASIC_REMOVED_TAGS = [
+    "SCRIPT",
+    "STYLE",
+    "NOSCRIPT",
+    "TEMPLATE",
+    "IFRAME",
+    "CANVAS",
+    "SVG",
+  ];
+
+  const DEFAULT_REMOVED_TAGS = [
+    "SCRIPT",
+    "STYLE",
+    "NOSCRIPT",
+    "TEMPLATE",
+    "SVG",
+    "META",
+    "NAV",
+    "FOOTER",
+    "ASIDE",
+    "IFRAME",
+    "FORM",
+    "BUTTON",
+    "INPUT",
+    "TEXTAREA",
+    "SELECT",
+    "OPTION",
+    "CANVAS",
+    "VIDEO",
+    "AUDIO",
+    "MAP",
+    "OBJECT",
+    "EMBED",
+    "SOURCE",
+    "TRACK",
+  ];
 
   let settings = { ...DEFAULTS };
   let messages = [];
   let pageContext = "";
   let pageUrl = location.href;
   let busy = false;
+  const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
   const host = document.createElement("div");
   host.id = ROOT_ID;
@@ -38,7 +78,7 @@
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; }
-      button, textarea, input { font: inherit; }
+      button, textarea, input, select { font: inherit; }
       #fab {
         position: fixed; right: 22px; bottom: 22px; z-index: 2147483647;
         width: 52px; height: 52px; border: 0; border-radius: 50%; cursor: pointer;
@@ -47,39 +87,87 @@
       }
       #fab:hover { transform: translateY(-1px); background: #26292c; }
       #panel {
+        --bg: #fff;
+        --panel-alt: #fafbfc;
+        --text: #1f2328;
+        --muted: #59636e;
+        --subtle: #68717a;
+        --border: #d8dee4;
+        --border-soft: #e7e9ec;
+        --input-bg: #fff;
+        --input-border: #b9c1ca;
+        --input-text: #202428;
+        --button-bg: #1769e0;
+        --button-text: #fff;
+        --hover-bg: #f0f2f4;
+        --user-bg: #eaf2ff;
+        --assistant-bg: #f2f3f5;
+        --error-bg: #fff0f0;
+        --error-text: #a31515;
+        --fixed-bg: #eceff2;
+        --shadow: rgba(0,0,0,.25);
+      }
+      #panel[data-theme="dark"] {
+        --bg: #17191c;
+        --panel-alt: #202328;
+        --text: #f0f3f6;
+        --muted: #aab4be;
+        --subtle: #97a1ab;
+        --border: #343a42;
+        --border-soft: #2b3037;
+        --input-bg: #101215;
+        --input-border: #424a54;
+        --input-text: #f2f5f8;
+        --button-bg: #4d8dff;
+        --button-text: #08111f;
+        --hover-bg: #2a3037;
+        --user-bg: #17385f;
+        --assistant-bg: #242930;
+        --error-bg: #3a181b;
+        --error-text: #ffb3b9;
+        --fixed-bg: #2b3037;
+        --shadow: rgba(0,0,0,.45);
+      }
+      #panel {
         position: fixed; right: 20px; bottom: 84px; z-index: 2147483647;
         width: min(400px, calc(100vw - 28px)); height: min(620px, calc(100vh - 110px));
         display: none; grid-template-rows: auto 1fr auto; overflow: hidden;
-        color: #1f2328; background: #fff; border: 1px solid #d8dee4; border-radius: 16px;
-        box-shadow: 0 18px 60px rgba(0,0,0,.25); font: 14px/1.45 system-ui, -apple-system, sans-serif;
+        color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 16px;
+        box-shadow: 0 18px 60px var(--shadow); font: 14px/1.45 system-ui, -apple-system, sans-serif;
       }
       #panel.open { display: grid; }
-      header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #e7e9ec; }
+      header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); }
       header strong { flex: 1; font-size: 15px; }
-      .icon { border: 0; border-radius: 7px; padding: 5px 8px; background: transparent; cursor: pointer; color: #555; }
-      .icon:hover { background: #f0f2f4; }
+      .icon { border: 0; border-radius: 7px; padding: 5px 8px; background: transparent; cursor: pointer; color: var(--muted); }
+      .icon:hover { background: var(--hover-bg); }
       #body { overflow-y: auto; padding: 14px; scroll-behavior: smooth; }
-      .welcome { color: #59636e; margin: 4px 2px 14px; }
+      .welcome { color: var(--muted); margin: 4px 2px 14px; }
       .msg { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .user { margin-left: 34px; background: #eaf2ff; }
-      .assistant { margin-right: 20px; background: #f2f3f5; }
-      .error { background: #fff0f0; color: #a31515; }
-      .meta { margin: -7px 4px 12px; color: #7a838c; font-size: 11px; }
-      #settings { display: none; padding: 12px 14px; overflow-y: auto; border-bottom: 1px solid #e7e9ec; background: #fafbfc; }
+      .user { margin-left: 34px; background: var(--user-bg); }
+      .assistant { margin-right: 20px; background: var(--assistant-bg); }
+      .error { background: var(--error-bg); color: var(--error-text); }
+      .meta { margin: -7px 4px 12px; color: var(--subtle); font-size: 11px; }
+      #settings { display: none; padding: 12px 14px; overflow-y: auto; border-bottom: 1px solid var(--border-soft); background: var(--panel-alt); }
       #settings.open { display: block; }
-      label { display: block; margin: 0 0 10px; color: #4b5560; font-size: 12px; }
+      label { display: block; margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+      .check { display: flex; align-items: center; gap: 8px; }
+      .check input { width: auto; }
+      .check span { margin: 0; }
       label span { display: block; margin-bottom: 4px; font-weight: 600; }
-      input, #system { width: 100%; padding: 7px 9px; border: 1px solid #c9d0d7; border-radius: 7px; background: white; color: #202428; }
+      input, select, #system { width: 100%; padding: 7px 9px; border: 1px solid var(--input-border); border-radius: 7px; background: var(--input-bg); color: var(--input-text); }
       #system { min-height: 88px; resize: vertical; }
       .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .fixed { padding: 7px 9px; border-radius: 7px; background: #eceff2; overflow-wrap: anywhere; }
-      #composer { padding: 12px; border-top: 1px solid #e7e9ec; background: #fff; }
-      #question { width: 100%; min-height: 68px; max-height: 160px; resize: vertical; padding: 9px 10px; border: 1px solid #b9c1ca; border-radius: 10px; color: #202428; background: #fff; }
+      .fixed { padding: 7px 9px; border-radius: 7px; background: var(--fixed-bg); overflow-wrap: anywhere; }
+      #composer { padding: 12px; border-top: 1px solid var(--border-soft); background: var(--bg); }
+      #question { width: 100%; min-height: 68px; max-height: 160px; resize: vertical; padding: 9px 10px; border: 1px solid var(--input-border); border-radius: 10px; color: var(--input-text); background: var(--input-bg); }
       #actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-      #status { flex: 1; color: #68717a; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      #send { border: 0; border-radius: 9px; padding: 8px 14px; background: #1769e0; color: white; cursor: pointer; font-weight: 650; }
+      #spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--button-bg); border-radius: 50%; display: none; flex: 0 0 auto; animation: spin .8s linear infinite; }
+      #spinner.active { display: inline-block; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #status { flex: 1; color: var(--subtle); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #send { border: 0; border-radius: 9px; padding: 8px 14px; background: var(--button-bg); color: var(--button-text); cursor: pointer; font-weight: 650; }
       #send:disabled { opacity: .55; cursor: wait; }
-      .secondary { border: 1px solid #c9d0d7; border-radius: 8px; padding: 7px 9px; background: white; color: #333; cursor: pointer; }
+      .secondary { border: 1px solid var(--input-border); border-radius: 8px; padding: 7px 9px; background: var(--input-bg); color: var(--input-text); cursor: pointer; }
     </style>
     <button id="fab" title="Ask this page" aria-label="Ask this page">?</button>
     <section id="panel" role="dialog" aria-label="Ask this page">
@@ -94,11 +182,13 @@
           <label><span>Server endpoint or base URL</span><input id="endpoint" type="url" placeholder="http://192.168.1.107:11434/v1/chat/completions"></label>
           <label><span>API key (optional; stored in Chrome local extension storage)</span><input id="api-key" type="password" autocomplete="off" placeholder="No key required"></label>
           <label><span>Model override (blank = auto-detect)</span><input id="model" placeholder="Loaded model from /v1/models"></label>
+          <label><span>Theme</span><select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
           <div class="row">
             <label><span>Maximum DOM characters</span><input id="dom-limit" type="number" min="10000" max="1000000" step="10000"></label>
             <label><span>Maximum answer tokens</span><input id="token-limit" type="number" min="64" max="8192" step="64"></label>
           </div>
           <label><span>Temperature</span><input id="temperature" type="number" min="0" max="2" step="0.1"></label>
+          <label><span>Page snapshot cleanup</span><select id="snapshot-cleanup"><option value="none">Leave all tags</option><option value="basic">Remove scripts and media shells</option><option value="full">Remove noisy page chrome and form tags</option></select></label>
           <label><span>System message</span><textarea id="system"></textarea></label>
           <button class="secondary" id="save">Save settings & start new chat</button>
         </div>
@@ -106,7 +196,7 @@
       </div>
       <div id="composer">
         <textarea id="question" placeholder="What would you like to know about this page?"></textarea>
-        <div id="actions"><span id="status">Ready</span><button id="send">Ask</button></div>
+        <div id="actions"><span id="spinner" aria-hidden="true"></span><span id="status">Ready</span><button id="send">Ask</button></div>
       </div>
     </section>`;
 
@@ -116,6 +206,7 @@
   const question = $("#question");
   const send = $("#send");
   const status = $("#status");
+  const spinner = $("#spinner");
 
   $("#fab").addEventListener("click", togglePanel);
   $("#close").addEventListener("click", () => panel.classList.remove("open"));
@@ -139,6 +230,11 @@
   chrome.storage.local.get(DEFAULTS, (saved) => {
     settings = normalizeSettings(saved);
     fillSettingsForm();
+    applyTheme();
+  });
+
+  colorSchemeQuery.addEventListener("change", () => {
+    if (settings.theme === "system") applyTheme();
   });
 
   setInterval(() => {
@@ -162,16 +258,18 @@
   async function submit() {
     const text = question.value.trim();
     if (!text || busy) return;
-    busy = true;
-    send.disabled = true;
-    question.disabled = true;
+    setBusy(true, "Preparing request…");
     addMessage("user", text);
     question.value = "";
+    let assistantMessage = null;
 
     try {
       if (!pageContext) {
         status.textContent = "Capturing live DOM…";
-        pageContext = capturePageContext(settings.maxDomChars);
+        pageContext = capturePageContext(
+          settings.maxDomChars,
+          settings.snapshotCleanup,
+        );
         messages = [
           { role: "system", content: settings.systemPrompt },
           {
@@ -183,74 +281,55 @@
         messages.push({ role: "user", content: text });
       }
 
+      assistantMessage = addMessage("assistant", "");
       status.textContent = "Waiting for llama-server…";
-      const result = await chrome.runtime.sendMessage({
-        type: "ask-llama",
+      const result = await askLlamaStream({
         messages,
         settings,
+        onDelta(delta, answer) {
+          updateMessage(assistantMessage, answer);
+          status.textContent = "Streaming answer…";
+        },
       });
 
-      if (!result?.ok)
-        throw new Error(result?.error || "Unknown extension error.");
       messages.push({ role: "assistant", content: result.answer });
-      addMessage("assistant", result.answer);
+      updateMessage(assistantMessage, result.answer);
 
       const cache = Number.isFinite(result.cachedTokens)
         ? `${result.cachedTokens.toLocaleString()} cached prompt tokens`
         : "prompt cache requested";
       const model = result.model ? ` · ${shorten(result.model, 35)}` : "";
       addMeta(`${cache}${model}`);
-      status.textContent = "Ready";
+      setBusy(false, "Ready");
     } catch (error) {
       // Remove the failed user request from server history, while leaving it visible.
       if (messages.at(-1)?.role === "user") messages.pop();
+      if (assistantMessage && !assistantMessage.textContent)
+        assistantMessage.remove();
       addMessage(
         "error",
         error instanceof Error ? error.message : String(error),
       );
-      status.textContent = "Request failed";
+      setBusy(false, "Request failed");
     } finally {
-      busy = false;
-      send.disabled = false;
-      question.disabled = false;
       question.focus();
     }
   }
 
-  function capturePageContext(limit) {
+  function capturePageContext(limit, snapshotCleanup) {
     const clone = document.documentElement.cloneNode(true);
     clone.querySelector(`#${CSS.escape(ROOT_ID)}`)?.remove();
-    clone
-      .querySelectorAll(
-        "script, style, noscript, template, iframe, canvas, svg",
-      )
-      .forEach((node) => node.remove());
+    const removedTags = tagsForSnapshotCleanup(snapshotCleanup);
+    if (removedTags.length) {
+      clone
+        .querySelectorAll(removedTags.join(","))
+        .forEach((node) => node.remove());
+    }
     clone
       .querySelectorAll("[nonce]")
       .forEach((node) => node.removeAttribute("nonce"));
-    clone
-      .querySelectorAll("input[type=password]")
-      .forEach((node) => node.setAttribute("value", "[REDACTED]"));
-
-    // Reflect current form state without exposing password fields.
-    const originals = [...document.querySelectorAll("input, textarea, select")];
-    const copies = [...clone.querySelectorAll("input, textarea, select")];
-    originals.forEach((original, index) => {
-      const copy = copies[index];
-      if (!copy || original.type === "password") return;
-      if (original instanceof HTMLInputElement) {
-        if (["checkbox", "radio"].includes(original.type))
-          copy.toggleAttribute("checked", original.checked);
-        else if (!["file", "hidden"].includes(original.type))
-          copy.setAttribute("value", original.value);
-      } else if (original instanceof HTMLTextAreaElement) {
-        copy.textContent = original.value;
-      } else if (original instanceof HTMLSelectElement) {
-        [...copy.options].forEach((option, i) =>
-          option.toggleAttribute("selected", original.options[i]?.selected),
-        );
-      }
-    });
+    reflectFormState(clone);
+    redactPasswordInputs(clone);
 
     const html = clone.outerHTML.replace(/\s{2,}/g, " ");
     const truncated = html.length > limit;
@@ -273,6 +352,12 @@
     div.textContent = text;
     body.appendChild(div);
     body.scrollTop = body.scrollHeight;
+    return div;
+  }
+
+  function updateMessage(element, text) {
+    element.textContent = text;
+    body.scrollTop = body.scrollHeight;
   }
 
   function addMeta(text) {
@@ -287,9 +372,11 @@
     $("#endpoint").value = settings.endpoint;
     $("#api-key").value = settings.apiKey;
     $("#model").value = settings.model;
+    $("#theme").value = settings.theme;
     $("#dom-limit").value = settings.maxDomChars;
     $("#token-limit").value = settings.maxTokens;
     $("#temperature").value = settings.temperature;
+    $("#snapshot-cleanup").value = settings.snapshotCleanup;
     $("#system").value = settings.systemPrompt;
   }
 
@@ -298,13 +385,16 @@
       endpoint: $("#endpoint").value,
       apiKey: $("#api-key").value,
       model: $("#model").value,
+      theme: $("#theme").value,
       maxDomChars: $("#dom-limit").value,
       maxTokens: $("#token-limit").value,
       temperature: $("#temperature").value,
+      snapshotCleanup: $("#snapshot-cleanup").value,
       systemPrompt: $("#system").value,
     });
     chrome.storage.local.set(settings);
     fillSettingsForm();
+    applyTheme();
     $("#settings").classList.remove("open");
     resetConversation();
   }
@@ -327,8 +417,110 @@
         DEFAULTS.maxTokens,
       ),
       temperature: clamp(Number(raw.temperature), 0, 2, DEFAULTS.temperature),
+      snapshotCleanup: ["none", "basic", "full"].includes(raw.snapshotCleanup)
+        ? raw.snapshotCleanup
+        : DEFAULTS.snapshotCleanup,
+      theme: ["system", "light", "dark"].includes(raw.theme)
+        ? raw.theme
+        : DEFAULTS.theme,
       systemPrompt: String(raw.systemPrompt || "").trim() || DEFAULT_SYSTEM,
     };
+  }
+
+  function askLlamaStream({ messages, settings, onDelta }) {
+    return new Promise((resolve, reject) => {
+      const port = chrome.runtime.connect({ name: "ask-llama" });
+      let answer = "";
+      let settled = false;
+
+      port.onMessage.addListener((message) => {
+        if (message?.type === "status") {
+          status.textContent = message.status || "Waiting for llama-server…";
+          return;
+        }
+        if (message?.type === "start") {
+          status.textContent = "llama-server is responding…";
+          return;
+        }
+        if (message?.type === "delta") {
+          answer += message.delta || "";
+          onDelta(message.delta || "", answer);
+          return;
+        }
+        if (message?.type === "done") {
+          settled = true;
+          resolve({ ...message, answer: message.answer ?? answer });
+          port.disconnect();
+          return;
+        }
+        if (message?.type === "error") {
+          settled = true;
+          reject(new Error(message.error || "Unknown extension error."));
+          port.disconnect();
+        }
+      });
+
+      port.onDisconnect.addListener(() => {
+        if (settled) return;
+        const message =
+          chrome.runtime.lastError?.message ||
+          "The streaming connection closed before the answer completed.";
+        reject(new Error(message));
+      });
+
+      port.postMessage({ type: "ask-llama", messages, settings });
+    });
+  }
+
+  function setBusy(isBusy, text) {
+    busy = isBusy;
+    send.disabled = isBusy;
+    question.disabled = isBusy;
+    spinner.classList.toggle("active", isBusy);
+    status.textContent = text;
+  }
+
+  function applyTheme() {
+    const effectiveTheme =
+      settings.theme === "system"
+        ? colorSchemeQuery.matches
+          ? "dark"
+          : "light"
+        : settings.theme;
+    panel.dataset.theme = effectiveTheme;
+  }
+
+  function tagsForSnapshotCleanup(level) {
+    if (level === "none") return [];
+    if (level === "basic") return BASIC_REMOVED_TAGS;
+    return DEFAULT_REMOVED_TAGS;
+  }
+
+  function reflectFormState(clone) {
+    const originals = [...document.querySelectorAll("input, textarea, select")];
+    const copies = [...clone.querySelectorAll("input, textarea, select")];
+    originals.forEach((original, index) => {
+      const copy = copies[index];
+      if (!copy || original.type === "password") return;
+      if (original instanceof HTMLInputElement) {
+        if (["checkbox", "radio"].includes(original.type))
+          copy.toggleAttribute("checked", original.checked);
+        else if (!["file", "hidden"].includes(original.type))
+          copy.setAttribute("value", original.value);
+      } else if (original instanceof HTMLTextAreaElement) {
+        copy.textContent = original.value;
+      } else if (original instanceof HTMLSelectElement) {
+        [...copy.options].forEach((option, i) =>
+          option.toggleAttribute("selected", original.options[i]?.selected),
+        );
+      }
+    });
+  }
+
+  function redactPasswordInputs(root) {
+    root.querySelectorAll("input").forEach((node) => {
+      if (node.type === "password") node.setAttribute("value", "[REDACTED]");
+    });
   }
 
   function clamp(value, min, max, fallback) {
