@@ -145,21 +145,26 @@
       .msg { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
       .user { margin-left: 34px; background: var(--user-bg); }
       .assistant { margin-right: 20px; background: var(--assistant-bg); }
-      .assistant.rendered { white-space: normal; }
-      .assistant.rendered > :first-child { margin-top: 0; }
-      .assistant.rendered > :last-child { margin-bottom: 0; }
-      .assistant.rendered p { margin: 0 0 9px; }
-      .assistant.rendered h1, .assistant.rendered h2, .assistant.rendered h3, .assistant.rendered h4, .assistant.rendered h5, .assistant.rendered h6 { margin: 12px 0 7px; line-height: 1.25; }
-      .assistant.rendered h1 { font-size: 18px; }
-      .assistant.rendered h2 { font-size: 16px; }
-      .assistant.rendered h3, .assistant.rendered h4, .assistant.rendered h5, .assistant.rendered h6 { font-size: 14px; }
-      .assistant.rendered ul, .assistant.rendered ol { margin: 0 0 9px; padding-left: 20px; }
-      .assistant.rendered li { margin: 3px 0; }
-      .assistant.rendered blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid var(--border); color: var(--muted); }
-      .assistant.rendered pre { margin: 0 0 9px; padding: 9px 10px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
-      .assistant.rendered code { padding: 1px 4px; border-radius: 5px; background: var(--input-bg); font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
-      .assistant.rendered pre code { padding: 0; background: transparent; white-space: pre; }
-      .assistant.rendered a { color: var(--button-bg); text-decoration: underline; text-underline-offset: 2px; }
+      .answer-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+      .answer-body.rendered { white-space: normal; }
+      .answer-body.rendered > :first-child { margin-top: 0; }
+      .answer-body.rendered > :last-child { margin-bottom: 0; }
+      .answer-body.rendered p { margin: 0 0 9px; }
+      .answer-body.rendered h1, .answer-body.rendered h2, .answer-body.rendered h3, .answer-body.rendered h4, .answer-body.rendered h5, .answer-body.rendered h6 { margin: 12px 0 7px; line-height: 1.25; }
+      .answer-body.rendered h1 { font-size: 18px; }
+      .answer-body.rendered h2 { font-size: 16px; }
+      .answer-body.rendered h3, .answer-body.rendered h4, .answer-body.rendered h5, .answer-body.rendered h6 { font-size: 14px; }
+      .answer-body.rendered ul, .answer-body.rendered ol { margin: 0 0 9px; padding-left: 20px; }
+      .answer-body.rendered li { margin: 3px 0; }
+      .answer-body.rendered blockquote { margin: 0 0 9px; padding-left: 10px; border-left: 3px solid var(--border); color: var(--muted); }
+      .answer-body.rendered pre { margin: 0 0 9px; padding: 9px 10px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
+      .answer-body.rendered code { padding: 1px 4px; border-radius: 5px; background: var(--input-bg); font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .answer-body.rendered pre code { padding: 0; background: transparent; white-space: pre; }
+      .answer-body.rendered a { color: var(--button-bg); text-decoration: underline; text-underline-offset: 2px; }
+      .reasoning { margin: 0 0 8px; }
+      .reasoning.empty { display: none; }
+      .reasoning summary { cursor: pointer; font-size: 11px; color: var(--subtle); user-select: none; }
+      .reasoning-body { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; font-style: italic; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
       .error { background: var(--error-bg); color: var(--error-text); }
       .meta { margin: -7px 4px 12px; color: var(--subtle); font-size: 11px; }
       #settings { display: none; padding: 12px 14px; overflow-y: auto; border-bottom: 1px solid var(--border-soft); background: var(--panel-alt); }
@@ -304,7 +309,7 @@
         messages.push({ role: "user", content: text });
       }
 
-      assistantMessage = addMessage("assistant", "");
+      assistantMessage = addAssistantMessage();
       status.textContent = "Waiting for llama-server…";
       const result = await askLlamaStream({
         messages,
@@ -313,10 +318,15 @@
           updateMessage(assistantMessage, answer);
           status.textContent = "Streaming answer…";
         },
+        onReasoningDelta(delta, reasoning) {
+          updateReasoning(assistantMessage, reasoning);
+          status.textContent = "Streaming answer…";
+        },
       });
 
       messages.push({ role: "assistant", content: result.answer });
       renderAssistantMessage(assistantMessage, result.answer);
+      updateReasoning(assistantMessage, result.reasoning || "");
 
       const cache = Number.isFinite(result.cachedTokens)
         ? `${result.cachedTokens.toLocaleString()} cached prompt tokens`
@@ -327,8 +337,8 @@
     } catch (error) {
       // Remove the failed user request from server history, while leaving it visible.
       if (messages.at(-1)?.role === "user") messages.pop();
-      if (assistantMessage && !assistantMessage.textContent)
-        assistantMessage.remove();
+      if (assistantMessage && !assistantMessage.wrapper.textContent)
+        assistantMessage.wrapper.remove();
       addMessage(
         "error",
         error instanceof Error ? error.message : String(error),
@@ -380,19 +390,47 @@
     return div;
   }
 
-  function updateMessage(element, text) {
-    element.classList.remove("rendered");
-    element.textContent = text;
+  function addAssistantMessage() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "msg assistant";
+
+    const details = document.createElement("details");
+    details.className = "reasoning empty";
+    const summary = document.createElement("summary");
+    summary.textContent = "Thinking";
+    const reasoningBody = document.createElement("div");
+    reasoningBody.className = "reasoning-body";
+    details.append(summary, reasoningBody);
+
+    const answerBody = document.createElement("div");
+    answerBody.className = "answer-body";
+
+    wrapper.append(details, answerBody);
+    body.appendChild(wrapper);
+    body.scrollTop = body.scrollHeight;
+    return { wrapper, details, reasoningBody, answerBody };
+  }
+
+  function updateMessage(assistantMessage, text) {
+    assistantMessage.answerBody.classList.remove("rendered");
+    assistantMessage.answerBody.textContent = text;
     body.scrollTop = body.scrollHeight;
   }
 
-  function renderAssistantMessage(element, text) {
+  function updateReasoning(assistantMessage, text) {
+    assistantMessage.reasoningBody.textContent = text;
+    assistantMessage.details.classList.toggle("empty", !text);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderAssistantMessage(assistantMessage, text) {
+    const { answerBody } = assistantMessage;
     try {
-      element.replaceChildren(renderMarkdown(text));
-      element.classList.add("rendered");
+      answerBody.replaceChildren(renderMarkdown(text));
+      answerBody.classList.add("rendered");
     } catch {
-      element.classList.remove("rendered");
-      element.textContent = text;
+      answerBody.classList.remove("rendered");
+      answerBody.textContent = text;
     }
     body.scrollTop = body.scrollHeight;
   }
@@ -466,10 +504,11 @@
     };
   }
 
-  function askLlamaStream({ messages, settings, onDelta }) {
+  function askLlamaStream({ messages, settings, onDelta, onReasoningDelta }) {
     return new Promise((resolve, reject) => {
       const port = chrome.runtime.connect({ name: "ask-llama" });
       let answer = "";
+      let reasoning = "";
       let settled = false;
 
       port.onMessage.addListener((message) => {
@@ -481,6 +520,11 @@
           status.textContent = "llama-server is responding…";
           return;
         }
+        if (message?.type === "reasoning-delta") {
+          reasoning += message.delta || "";
+          onReasoningDelta(message.delta || "", reasoning);
+          return;
+        }
         if (message?.type === "delta") {
           answer += message.delta || "";
           onDelta(message.delta || "", answer);
@@ -488,7 +532,11 @@
         }
         if (message?.type === "done") {
           settled = true;
-          resolve({ ...message, answer: message.answer ?? answer });
+          resolve({
+            ...message,
+            answer: message.answer ?? answer,
+            reasoning: message.reasoning ?? reasoning,
+          });
           port.disconnect();
           return;
         }

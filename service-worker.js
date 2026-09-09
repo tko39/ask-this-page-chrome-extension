@@ -72,9 +72,14 @@ async function askLlama({ messages, settings }) {
       "The server response did not contain choices[0].message.content.",
     );
   }
+  const reasoning =
+    data?.choices?.[0]?.message?.reasoning_content ??
+    data?.choices?.[0]?.message?.reasoning ??
+    "";
 
   return {
     answer,
+    reasoning,
     model,
     ...extractUsage(data),
   };
@@ -109,6 +114,7 @@ async function streamLlama({ messages, settings }, port, signal) {
   const decoder = new TextDecoder();
   let buffer = "";
   let answer = "";
+  let reasoning = "";
   let cachedTokens = null;
   let promptTokens = null;
 
@@ -118,6 +124,7 @@ async function streamLlama({ messages, settings }, port, signal) {
       postPort(port, {
         type: "done",
         answer,
+        reasoning,
         model,
         cachedTokens,
         promptTokens,
@@ -127,6 +134,10 @@ async function streamLlama({ messages, settings }, port, signal) {
 
     cachedTokens = parsed.cachedTokens ?? cachedTokens;
     promptTokens = parsed.promptTokens ?? promptTokens;
+    if (parsed.reasoningDelta) {
+      reasoning += parsed.reasoningDelta;
+      postPort(port, { type: "reasoning-delta", delta: parsed.reasoningDelta });
+    }
     if (parsed.delta) {
       answer += parsed.delta;
       postPort(port, { type: "delta", delta: parsed.delta });
@@ -155,6 +166,7 @@ async function streamLlama({ messages, settings }, port, signal) {
   postPort(port, {
     type: "done",
     answer,
+    reasoning,
     model,
     cachedTokens,
     promptTokens,
@@ -279,6 +291,10 @@ function parseStreamLine(line) {
   const usage = extractUsage(data);
   return {
     delta: data?.choices?.[0]?.delta?.content || "",
+    reasoningDelta:
+      data?.choices?.[0]?.delta?.reasoning_content ||
+      data?.choices?.[0]?.delta?.reasoning ||
+      "",
     cachedTokens: usage.cachedTokens,
     promptTokens: usage.promptTokens,
   };
