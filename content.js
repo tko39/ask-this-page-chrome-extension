@@ -176,6 +176,7 @@
       label span { display: block; margin-bottom: 4px; font-weight: 600; }
       input, select, #system { width: 100%; padding: 7px 9px; border: 1px solid var(--input-border); border-radius: 7px; background: var(--input-bg); color: var(--input-text); }
       #system { min-height: 88px; resize: vertical; }
+      .masked-key-input { -webkit-text-security: disc; -moz-text-security: disc; text-security: disc; }
       .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
       .fixed { padding: 7px 9px; border-radius: 7px; background: var(--fixed-bg); overflow-wrap: anywhere; }
       #composer { padding: 12px; border-top: 1px solid var(--border-soft); background: var(--bg); }
@@ -200,7 +201,22 @@
       <div style="min-height:0;display:grid;grid-template-rows:auto 1fr;overflow:hidden">
         <div id="settings">
           <label><span>Server endpoint or base URL</span><input id="endpoint" type="url" placeholder="http://192.168.1.107:11434/v1/chat/completions"></label>
-          <label><span>API key (optional; stored in Chrome local extension storage)</span><input id="api-key" type="password" autocomplete="off" placeholder="No key required"></label>
+          <label>
+            <span>API key (optional; stored in Chrome local extension storage)</span>
+            <input 
+              id="api-key" 
+              type="text" 
+              class="masked-key-input" 
+              autocomplete="off" 
+              autocorrect="off" 
+              autocapitalize="off" 
+              spellcheck="false"
+              data-1p-ignore 
+              data-lpignore="true" 
+              data-bwignore="true" 
+              placeholder="No key required"
+            >
+          </label>
           <label><span>Model override (blank = auto-detect)</span><input id="model" placeholder="Loaded model from /v1/models"></label>
           <label><span>Theme</span><select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
           <div class="row">
