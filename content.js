@@ -164,7 +164,7 @@
       .reasoning { margin: 0 0 8px; }
       .reasoning.empty { display: none; }
       .reasoning summary { cursor: pointer; font-size: 11px; color: var(--subtle); user-select: none; }
-      .reasoning-body { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; font-style: italic; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+      .reasoning-body { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--border); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; font-style: italic; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
       .error { background: var(--error-bg); color: var(--error-text); }
       .meta { margin: -7px 4px 12px; color: var(--subtle); font-size: 11px; }
       #settings { display: none; padding: 12px 14px; overflow-y: auto; border-bottom: 1px solid var(--border-soft); background: var(--panel-alt); }
@@ -400,6 +400,10 @@
     summary.textContent = "Thinking";
     const reasoningBody = document.createElement("div");
     reasoningBody.className = "reasoning-body";
+    // Clicking the streamed text itself also collapses it, not just the summary arrow.
+    reasoningBody.addEventListener("click", () => {
+      details.open = false;
+    });
     details.append(summary, reasoningBody);
 
     const answerBody = document.createElement("div");
