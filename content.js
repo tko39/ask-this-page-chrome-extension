@@ -72,6 +72,9 @@
 
   const host = document.createElement("div");
   host.id = ROOT_ID;
+  // Hidden by default; the toolbar action reveals it per the user's toggle.
+  host.style.display = "none";
+  host.hidden = true;
   document.documentElement.appendChild(host);
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `

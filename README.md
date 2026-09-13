@@ -1,89 +1,73 @@
 # Ask This Page (llama.cpp)
 
-A complete Chrome Manifest V3 extension that adds:
+A Chrome Manifest V3 extension that lets you ask a local `llama-server.exe` about the current live DOM of any normal HTTP or HTTPS page.
 
-- a floating **?** button to normal HTTP/HTTPS pages;
-- a Chrome toolbar action that hides or shows the embedded page UI, including the floating **?** button;
-- a chat UI that asks a local-network `llama-server.exe` about the page's **current live DOM**;
-- streamed assistant responses with a loading spinner while the model is working;
-- basic Markdown rendering for completed assistant responses;
-- multi-turn conversation and llama.cpp prompt-cache reuse;
-- automatic loaded-model discovery from `/v1/models`;
-- configurable endpoint, optional API key, system prompt, DOM limit, output length, temperature, optional model override, page cleanup, and theme.
+It provides a floating **?** button, a toolbar toggle, streamed answers, multi-turn chat, safe Markdown rendering, automatic model discovery, and llama.cpp prompt-cache reuse. Settings include the server endpoint, API key, system prompt, DOM and output limits, temperature, model override, snapshot cleanup, and theme.
 
-The default server endpoint is:
-
-`http://192.168.1.107:11434/v1/chat/completions`
-
-It can be changed from the panel's **Settings** screen without modifying the manifest or reloading the extension. A base URL such as `http://localhost:8080` is also accepted; `/v1/chat/completions` is appended automatically.
+The initial endpoint is `http://localhost:11434/v1/chat/completions`. Change it in **Settings**; a base URL such as `http://192.168.1.107:11434` is also accepted and is completed with `/v1/chat/completions` automatically.
 
 ## Install
 
-1. Extract `page-llama-extension.zip` (or use the `page-llama` folder directly).
+1. Extract `page-llama-extension.zip`, or use the `page-llama` folder directly.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Click **Load unpacked** and select the `page-llama` folder.
-5. Open or reload a normal web page, then click the floating **?** to open the panel. Click the extension's toolbar icon to hide or show the embedded UI, including the floating **?** button, on that page.
+5. Open or reload a normal web page and click the floating **?** button. Use the extension toolbar icon to hide or show the page UI.
 
-Chrome does not allow extensions to inject this panel into Chrome-owned pages such as `chrome://extensions` or the Chrome Web Store.
+The panel cannot be injected into Chrome-owned pages such as `chrome://extensions` or the Chrome Web Store.
 
 ## Run llama-server.exe
 
-The exact model flags depend on your installation. A representative Windows command for the default endpoint is:
+The exact flags depend on your installation. For a server reachable on port `11434`:
 
 ```powershell
 .\llama-server.exe --model C:\models\your-instruct-model.gguf --host 0.0.0.0 --port 11434 --ctx-size 32768
 ```
 
-The model should be an instruction/chat model with a supported chat template. Ensure Windows Firewall permits TCP port `11434` on the appropriate private network. You can test connectivity from the Chrome machine by opening:
+Use an instruction/chat model with a supported chat template. For a server on another machine, bind it to the network interface and allow the port through Windows Firewall:
 
-`http://192.168.1.107:11434/v1/models`
+Test connectivity from the Chrome machine by opening `http://server-address:11434/v1/models`.
 
-For a server protected by a bearer token, enter the token under **API key** in Settings. It is stored in Chrome's local extension storage and sent only to the configured endpoint. This is convenient rather than a hardened secrets vault; do not use a highly privileged key.
+For a bearer-token server, enter the token under **API key** in **Settings**. It is stored in Chrome local extension storage and sent only to the configured endpoint. Do not use a highly privileged key.
 
-## How page context and caching work
+## Use the extension
 
-On the first question in a chat, the content script clones `document.documentElement`, removes its own UI, removes noisy or privacy-sensitive page tags, truncates to the configured character limit, and sends that snapshot with the question. Password input values are always redacted before serialization.
+The first question captures a snapshot of the live page DOM and sends it with the question. The default cleanup removes scripts, media, page chrome, and form controls; password values are redacted in every mode. Follow-up questions reuse the same snapshot and conversation. Click **New** to capture the page again after it changes.
 
-The **Page snapshot cleanup** setting controls how much markup is removed:
+**Page snapshot cleanup** offers these modes:
 
-- **Leave all tags** keeps the page markup, apart from the extension UI and security redactions.
-- **Remove scripts and media shells** removes `SCRIPT`, `STYLE`, `NOSCRIPT`, `TEMPLATE`, `IFRAME`, `CANVAS`, and `SVG` tags.
-- **Remove noisy page chrome and form tags** is the default. It removes `SCRIPT`, `STYLE`, `NOSCRIPT`, `TEMPLATE`, `SVG`, `META`, `NAV`, `FOOTER`, `ASIDE`, `IFRAME`, `FORM`, `BUTTON`, `INPUT`, `TEXTAREA`, `SELECT`, `OPTION`, `CANVAS`, `VIDEO`, `AUDIO`, `MAP`, `OBJECT`, `EMBED`, `SOURCE`, and `TRACK` tags.
-- **Text Only (dangerous)** sends normalized document text without markup, element roles, attributes, or hierarchy. This produces the most lightweight prompt, but it can lose important context.
+- **Leave all tags** keeps page markup, apart from the extension UI and security redactions.
+- **Remove scripts and media shells** removes executable content and common media shells.
+- **Remove noisy page chrome and form tags** is the default and also removes navigation, forms, controls, and other page noise.
+- **Text Only (dangerous)** sends normalized text without markup or hierarchy and may lose useful context.
 
-Follow-ups include prior chat turns so the model retains context. The request sets llama.cpp's `cache_prompt: true`. `llama-server` compares the new prompt with the preceding prompt and can reuse the common-prefix KV cache rather than evaluating the unchanged DOM again. When supplied by the server, the UI shows the reused token count.
+The extension requests `cache_prompt: true`, allowing llama-server to reuse unchanged prompt tokens on follow-ups. The UI shows the reused token count when the server reports it. The full message history and snapshot are still sent because the OpenAI-compatible endpoint is stateless.
 
-Answers are requested with OpenAI-compatible streaming enabled, so the assistant bubble fills as chunks arrive instead of waiting for the full response body. The existing one-shot extension message path remains as a fallback for compatibility, but the panel uses streaming.
+Answers stream into the panel while the model works. Slow model loads show status updates, and closing or navigating the tab cancels the request. URL changes in a single-page app reset the conversation automatically.
 
-Assistant output streams as plain text while the model is generating, then renders a safe Markdown subset after the answer completes. Supported Markdown includes headings, paragraphs, ordered and unordered lists, blockquotes, fenced code blocks, inline code, bold, italic, and `http:`, `https:`, or `mailto:` links. Raw HTML from model output is shown as text rather than rendered as page HTML, and unsafe link protocols are not made clickable.
+Completed answers render a safe Markdown subset. Raw HTML is displayed as text, and only `http:`, `https:`, and `mailto:` links are clickable.
 
-While waiting for a slow model load or first response bytes, the extension keeps the streaming port active with periodic status updates. There is no extension-level request timeout; closing or navigating the tab cancels the in-flight request.
+## Privacy
 
-Important limitation: the OpenAI-compatible chat endpoint is stateless at the HTTP layer, so the unchanged message prefix is transmitted again even when its token computation is cached. Omitting the DOM from later requests would make a standard `llama-server` request forget it. Click **New** to capture a fresh DOM after the page changes; SPA URL changes reset the conversation automatically.
+The live DOM may contain private data, account details, hidden content, or tokens. The snapshot is sent to the configured server, so use the extension only on pages you are willing to share with that server. Cleanup and password redaction reduce exposure but are not complete data-loss prevention.
 
-## Privacy and security
-
-The live DOM can contain private page data, account details, hidden content, and tokens embedded by a site. This extension sends the snapshot only to the configured server, but you should still use it only on pages whose contents may be shared with that machine. Form and input controls are removed from the default snapshot, and password input values are redacted in every cleanup mode, but this is not a complete data-loss-prevention system.
-
-Page text is explicitly marked as untrusted in the default system message to reduce prompt-injection risk. No prompt can guarantee complete protection, so treat model output as untrusted.
+Page text is marked as untrusted in the default system prompt to reduce prompt-injection risk. Treat model output as untrusted.
 
 ## Appearance
 
-The panel uses the browser or operating-system color scheme by default. In **Settings**, change **Theme** to **Light** or **Dark** for a persistent manual override.
+The panel follows the browser or operating-system color scheme by default. Set **Theme** to **Light** or **Dark** for a persistent override.
 
 ## Files
 
-- `manifest.json` — Manifest V3 configuration and HTTP/HTTPS host permissions, allowing endpoints to be changed without editing the extension.
-- `service-worker.js` — calls llama.cpp, streams chat chunks, discovers the loaded model, and reports errors/cache metrics.
-- `content.js` — floating button, Shadow DOM chat UI, Markdown rendering, live-DOM capture, cleanup settings, theme, and conversation state.
+- `manifest.json` - Manifest V3 configuration and HTTP/HTTPS host permissions.
+- `service-worker.js` - llama.cpp requests, streaming, model discovery, and errors.
+- `content.js` - page UI, live-DOM capture, cleanup, Markdown rendering, theme, and chat state.
 
 ## Troubleshooting
 
-- **Cannot reach server:** start `llama-server.exe` with `--host 0.0.0.0`, verify the configured endpoint and port, and check the firewall.
-- **No loaded model:** verify `/v1/models` returns one model, or enter an exact model ID in the panel settings.
-- **Context-size error:** reduce **Maximum DOM characters**, or start the server with a larger `--ctx-size`.
-- **Streaming connection closed early:** reload the extension after updates and check whether the tab navigated or the service worker stopped. Slow model loads should continue showing waiting status messages until the server responds.
-- **No streamed text:** verify your endpoint supports OpenAI-compatible chat completion streaming with `stream: true`.
-- **Button missing:** reload pages after installing. Chrome-owned pages cannot host the content script.
-- **Model gives poor page answers:** use an instruct model with a correct chat template and consider raising the context size.
+- **Cannot reach server:** verify the endpoint, port, `--host 0.0.0.0`, and Windows Firewall rules.
+- **No loaded model:** verify `/v1/models` returns a model, or set an exact model ID in **Settings**.
+- **Context-size error:** lower **Maximum DOM characters** or raise the server's `--ctx-size`.
+- **Stream closes or has no text:** reload the extension and verify that the endpoint supports OpenAI-compatible streaming with `stream: true`.
+- **Button missing:** reload the page after installation. Chrome-owned pages cannot host the content script.
+- **Poor answers:** use an instruction/chat model with a correct chat template and increase the context size if needed.
