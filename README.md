@@ -8,10 +8,10 @@ The initial endpoint is `http://localhost:11434/v1/chat/completions`. Change it 
 
 ## Install
 
-1. Extract `page-llama-extension.zip`, or use the `page-llama` folder directly.
+1. Extract `ask-this-page-chrome-extension-extension.zip`, or use the `ask-this-page-chrome-extension` folder directly.
 2. Open `chrome://extensions`.
 3. Enable **Developer mode**.
-4. Click **Load unpacked** and select the `page-llama` folder.
+4. Click **Load unpacked** and select the `ask-this-page-chrome-extension` folder.
 5. Open or reload a normal web page and click the floating **?** button. Use the extension toolbar icon to hide or show the page UI.
 
 The panel cannot be injected into Chrome-owned pages such as `chrome://extensions` or the Chrome Web Store.
